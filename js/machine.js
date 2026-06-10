@@ -1,8 +1,10 @@
 // C16-Maschinenmodell: 16K RAM (gespiegelt), TED-Register, ROM-Banking,
 // Kernal-Ersatzroutinen (CHROUT/GETIN/STOP) ohne Original-ROM.
 'use strict';
-if (typeof require !== 'undefined') {
-  var { CPU6502 } = require('./cpu6502.js');
+// Node-Kompatibilitaet ohne Browser-Namenskollision: kein top-level var,
+// sonst kollidiert es mit der Klassendeklaration aus cpu6502.js.
+if (typeof require !== 'undefined' && typeof globalThis.CPU6502 === 'undefined') {
+  globalThis.CPU6502 = require('./cpu6502.js').CPU6502;
 }
 
 // PETSCII -> Screencode
