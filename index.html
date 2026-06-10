@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Return of Rockman – C16 im Browser</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #1a1226;
+    background: radial-gradient(ellipse at center, #2a1d3e 0%, #14101e 75%);
+    font-family: "Courier New", monospace;
+    color: #d8c8f0;
+  }
+  h1 {
+    font-size: 22px; letter-spacing: 4px; margin: 18px 0 4px;
+    color: #f0a0d0; text-shadow: 0 0 12px #b050a0;
+  }
+  .sub { font-size: 12px; margin-bottom: 14px; color: #9080b0; }
+  #frame {
+    padding: 14px; border-radius: 10px;
+    background: #3a2a52; box-shadow: 0 8px 40px #000c, inset 0 0 0 2px #574180;
+  }
+  canvas {
+    display: block; width: 768px; height: 576px; max-width: 92vw;
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    background: #000;
+  }
+  #hints {
+    margin-top: 14px; font-size: 13px; line-height: 1.7; text-align: center;
+  }
+  #hints b { color: #ffd080; }
+  .key {
+    display: inline-block; padding: 1px 7px; margin: 0 2px;
+    border: 1px solid #8068b0; border-bottom-width: 3px; border-radius: 4px;
+    background: #2c2044; font-size: 12px; color: #e8d8ff;
+  }
+  #sound-note { font-size: 11px; color: #786898; margin-top: 6px; }
+</style>
+</head>
+<body>
+<h1>RETURN OF ROCKMAN</h1>
+<div class="sub">Commodore 16 &middot; Mastertronic 1986 &middot; emuliert im Browser</div>
+<div id="frame"><canvas id="screen" width="384" height="288"></canvas></div>
+<div id="hints">
+  <span class="key">Shift</span> oder <span class="key">Leertaste</span> = Start / Aktion &nbsp;&nbsp;
+  <span class="key">&#8592;</span><span class="key">&#8593;</span><span class="key">&#8595;</span><span class="key">&#8594;</span> oder
+  <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> = Boris steuern
+  <div id="sound-note">Ton startet nach dem ersten Tastendruck (Browser-Richtlinie).</div>
+</div>
+<script src="js/cpu6502.js"></script>
+<script src="js/ted.js"></script>
+<script src="js/machine.js"></script>
+<script src="js/game-data.js"></script>
+<script>
+'use strict';
+(function () {
+  const ramImage = b64ToBytes(GAME_RAM_B64);
+  const romFont = b64ToBytes(ROM_FONT_B64);
+  const c16 = new C16(ramImage, romFont);
+  const video = new TEDVideo(c16);
+  const sound = new TEDSound();
+
+  const canvas = document.getElementById('screen');
+  const ctx = canvas.getContext('2d');
+  const imageData = ctx.createImageData(video.W, video.H);
+
+  // Eingabe: wir setzen die Kernal-Variablen direkt.
+  //   $C6   = Matrix-Code der gedrueckten Taste ($40 = keine)
+  //   $0543 = Shift-Flag (Start/Aktion)
+  const DIR = { up: 0x08, down: 0x09, right: 0x0b, left: 0x0a, none: 0x40 };
+  const pressed = new Set();
+  let shiftDown = false;
+
+  function keyFor(ev) {
+    switch (ev.code) {
+      case 'ArrowUp': case 'KeyW': return 'up';
+      case 'ArrowDown': case 'KeyS': return 'down';
+      case 'ArrowLeft': case 'KeyA': return 'left';
+      case 'ArrowRight': case 'KeyD': return 'right';
+      default: return null;
+    }
+  }
+  function applyInput() {
+    // letzte noch gedrueckte Richtung gewinnt
+    let code = DIR.none;
+    for (const d of pressed) code = DIR[d];
+    c16.ram[0xc6] = code;
+    c16.ram[0x0543] = shiftDown ? 1 : 0;
+  }
+  window.addEventListener('keydown', (ev) => {
+    sound.init();
+    const d = keyFor(ev);
+    if (d) { pressed.add(d); ev.preventDefault(); }
+    if (ev.key === 'Shift' || ev.code === 'Space' || ev.code === 'Enter') {
+      shiftDown = true; ev.preventDefault();
+    }
+    applyInput();
+  });
+  window.addEventListener('keyup', (ev) => {
+    const d = keyFor(ev);
+    if (d) pressed.delete(d);
+    if (ev.key === 'Shift' || ev.code === 'Space' || ev.code === 'Enter') shiftDown = false;
+    applyInput();
+  });
+  canvas.addEventListener('pointerdown', () => sound.init());
+
+  // PAL-Takt: ~886.7 kHz effektiv, zeitbasiert emuliert
+  const CYCLES_PER_MS = 887;
+  let last = performance.now();
+  let blinkCounter = 0;
+
+  function tick(now) {
+    let dt = now - last;
+    last = now;
+    if (dt > 100) dt = 100; // Tab war im Hintergrund
+    c16.run(Math.floor(dt * CYCLES_PER_MS));
+    if (++blinkCounter >= 16) { blinkCounter = 0; c16.blinkPhase = !c16.blinkPhase; }
+    imageData.data.set(video.render());
+    ctx.putImageData(imageData, 0, 0);
+    sound.update(c16.ted);
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
