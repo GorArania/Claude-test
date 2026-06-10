@@ -88,13 +88,16 @@
   // Ein Tipp bleibt deshalb gespeichert, bis das Spiel ihn GELESEN hat
   // (2 Lesezugriffe = ein kompletter Abfrage-Durchlauf des Spiels).
   let tapDir = null, tapReads = 0, tapExpires = 0;
+  let cheatBuf = '';
 
   function heldDir() {
     let d = null;
     for (const x of pressed) d = x; // zuletzt gedrueckte gewinnt
     return d;
   }
+  let lastKeyPoll = 0; // wann das Spiel zuletzt die Tastatur abgefragt hat
   c16.keyReadHook = () => {
+    lastKeyPoll = performance.now();
     if (tapDir && performance.now() > tapExpires) tapDir = null; // verfallen
     if (tapDir) {
       const code = DIR[tapDir];
@@ -139,6 +142,17 @@
     }
     if (ev.key === 'Shift' || ev.code === 'Space' || ev.code === 'Enter') {
       pressShift(); ev.preventDefault();
+    }
+    // Geheimcode: das Wort LEVEL tippen -> Level ueberspringen.
+    // Setzt das "Ausgang erreicht"-Flag $0357, das Spiel macht den Rest
+    // selbst (Bonus-Countdown, naechstes Level). Wirkt nur im laufenden
+    // Spiel (Tastatur wurde gerade gepollt), nicht im Titel/Intro.
+    if (/^Key[A-Z]$/.test(ev.code)) {
+      cheatBuf = (cheatBuf + ev.code[3]).slice(-5);
+      if (cheatBuf === 'LEVEL' && performance.now() - lastKeyPoll < 1500) {
+        c16.ram[0x0357] = 0xff;
+        cheatBuf = '';
+      }
     }
   });
   window.addEventListener('keyup', (ev) => {
