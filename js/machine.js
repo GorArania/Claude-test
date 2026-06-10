@@ -59,6 +59,8 @@ class C16 {
     this.keyReadHook = null;
     // Sound-Registerschreibzugriffe mit Zyklus-Zeitstempel (fuer WebAudio)
     this.soundEvents = [];
+    // Pseudozufalls-Jitter fuer Timer-Lesungen (s. read $FF00)
+    this.rngJitter = 0x2f6e;
     // Hardware-Tastaturmatrix (8 Zeilen) - aktiv low
     this.kbMatrix = new Uint8Array(8).fill(0xff);
     this.kbLatch = 0xff;
@@ -84,8 +86,14 @@ class C16 {
     if (a >= 0xff00 && a <= 0xff3f) {
       const r = a & 0x3f;
       // Timer 1-3 laufen frei (zaehlen abwaerts) - das Spiel nutzt
-      // Timer 1 ($FF00) als Zufallsquelle fuer die Monster-KI.
-      if (r === 0x00) return this.timerVal() & 0xff;
+      // Timer 1 ($FF00) als Zufallsquelle. Echte Hardware verliert dabei
+      // unregelmaessig CPU-Zyklen an den TED (Badlines, RAM-Refresh);
+      // ohne diesen Jitter waeren zwei kurz aufeinanderfolgende Lesungen
+      // starr korreliert (z.B. Wachstumsrichtung der radioaktiven Masse).
+      if (r === 0x00) {
+        this.rngJitter = (this.rngJitter * 0x343fd + 0x269ec3) & 0x7fffffff;
+        return (this.timerVal() + (this.rngJitter >> 11)) & 0xff;
+      }
       if (r === 0x01) return (this.timerVal() >> 8) & 0xff;
       if (r === 0x02) return (this.timerVal()) & 0xff;
       if (r === 0x03) return (this.timerVal() >> 8) & 0xff;
