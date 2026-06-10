@@ -83,8 +83,14 @@ class C16 {
     a &= 0xffff;
     if (a >= 0xff00 && a <= 0xff3f) {
       const r = a & 0x3f;
-      if (r === 0x02) return (this.timerVal(0)) & 0xff;
-      if (r === 0x03) return (this.timerVal(0) >> 8) & 0xff;
+      // Timer 1-3 laufen frei (zaehlen abwaerts) - das Spiel nutzt
+      // Timer 1 ($FF00) als Zufallsquelle fuer die Monster-KI.
+      if (r === 0x00) return this.timerVal() & 0xff;
+      if (r === 0x01) return (this.timerVal() >> 8) & 0xff;
+      if (r === 0x02) return (this.timerVal()) & 0xff;
+      if (r === 0x03) return (this.timerVal() >> 8) & 0xff;
+      if (r === 0x04) return (this.timerVal() ^ 0x5a) & 0xff;
+      if (r === 0x05) return ((this.timerVal() >> 8) ^ 0x33) & 0xff;
       if (r === 0x08) return this.kbLatch;
       if (r === 0x09) return 0xff;
       if (r === 0x1c) return ((this.raster() >> 8) & 1) | 0xfe & 0xff;
