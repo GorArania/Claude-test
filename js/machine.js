@@ -55,6 +55,10 @@ class C16 {
     this.colorBase = 0x0800;
     // Eingabepuffer (PETSCII)
     this.keyQueue = [];
+    // Eingabe-Hook: liefert den Matrix-Code, wenn das Spiel $C6 liest
+    this.keyReadHook = null;
+    // Sound-Registerschreibzugriffe mit Zyklus-Zeitstempel (fuer WebAudio)
+    this.soundEvents = [];
     // Hardware-Tastaturmatrix (8 Zeilen) - aktiv low
     this.kbMatrix = new Uint8Array(8).fill(0xff);
     this.kbLatch = 0xff;
@@ -91,6 +95,7 @@ class C16 {
       if ((a & 0xfff0) === 0xfd30) return this.fd30;
       return 0xff;
     }
+    if (a === 0x00c6 && this.keyReadHook) return this.keyReadHook();
     if (a >= 0x8000 && this.romIn) return 0;
     return this.ram[a & 0x3fff];
   }
@@ -105,6 +110,9 @@ class C16 {
         // Latch: Tastaturzeilen anhand $FD30-Maske + Joystickauswahl im Datenbyte
         this.kbLatch = this.scanKeyboard(v);
         return;
+      }
+      if (r >= 0x0e && r <= 0x12 && this.ted[r] !== v) {
+        if (this.soundEvents.length < 4096) this.soundEvents.push([this.cpu.clock, r, v]);
       }
       this.ted[r] = v;
       return;

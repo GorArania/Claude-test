@@ -103,32 +103,38 @@ class TEDVideo {
 }
 
 // TED-Sound: 2 Kanaele. Kanal 1: Rechteck. Kanal 2: Rechteck oder Rauschen.
-// freq = 111861 / (1024 - reg) Hz  (PAL)
+// Ereignisbasiert: jeder Registerschreibzugriff wird mit seinem CPU-Zyklus
+// protokolliert (machine.soundEvents) und zeitgenau in WebAudio eingeplant,
+// damit auch kurze Effekte (Graben, Steine, Diamanten) hoerbar sind.
+// Tonhoehe (PAL): f = 111861 / (1024 - N) Hz
 class TEDSound {
   constructor() {
     this.ctx = null;
-    this.osc1 = null; this.osc2 = null; this.noise = null;
-    this.gain1 = null; this.gain2 = null; this.gainN = null;
-    this.master = null;
     this.enabled = false;
+    this.regs = new Uint8Array(0x40);
+    this.cycleBase = 0;
+    this.timeBase = 0;
   }
   init() {
-    if (this.ctx) return;
+    if (this.ctx) {
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      return;
+    }
     const AC = window.AudioContext || window.webkitAudioContext;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.12;
+    this.master.gain.value = 0.10;
     this.master.connect(this.ctx.destination);
-    const mk = (type) => {
+    const mk = () => {
       const o = this.ctx.createOscillator();
-      o.type = type; o.frequency.value = 440;
+      o.type = 'square'; o.frequency.value = 440;
       const g = this.ctx.createGain(); g.gain.value = 0;
       o.connect(g); g.connect(this.master); o.start();
       return [o, g];
     };
-    [this.osc1, this.gain1] = mk('square');
-    [this.osc2, this.gain2] = mk('square');
-    // Rauschquelle
+    [this.osc1, this.gain1] = mk();
+    [this.osc2, this.gain2] = mk();
+    // Rauschquelle (LFSR-artiges weisses Rauschen)
     const len = this.ctx.sampleRate;
     const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = buf.getChannelData(0);
@@ -144,28 +150,52 @@ class TEDSound {
     this.noise.start();
     this.enabled = true;
   }
-  update(ted) {
-    if (!this.enabled) return;
-    const t = this.ctx.currentTime;
-    const ctl = ted[0x11];
+  // events: [[cpuZyklus, reg, wert], ...]; frameStartCycle fuer die Zeitanker-Pflege
+  update(machine) {
+    const events = machine.soundEvents;
+    if (!this.enabled) { events.length = 0; return; }
+    const CPS = 886700; // CPU-Zyklen pro Sekunde (PAL, effektiv)
+    const now = this.ctx.currentTime;
+    const LEAD = 0.06;  // Planungsvorlauf
+    // Zeitanker pruefen/neu setzen (Drift zwischen CPU- und Audio-Uhr)
+    const anchorOk = () => {
+      const t = this.timeBase + (machine.frameStartClock - this.cycleBase) / CPS;
+      return t >= now + 0.01 && t <= now + 0.30;
+    };
+    if (!anchorOk()) {
+      this.cycleBase = machine.frameStartClock;
+      this.timeBase = now + LEAD;
+    }
+    for (const [cyc, reg, val] of events) {
+      this.regs[reg] = val;
+      let t = this.timeBase + (cyc - this.cycleBase) / CPS;
+      if (t < now) t = now;
+      this.applyAt(t);
+    }
+    events.length = 0;
+  }
+  applyAt(t) {
+    const r = this.regs;
+    const ctl = r[0x11];
     const vol = Math.min(ctl & 0x0f, 8) / 8;
     const v1on = (ctl & 0x10) !== 0;
     const v2on = (ctl & 0x20) !== 0;
     const v2noise = (ctl & 0x40) !== 0;
-    const f1v = ted[0x0e] | ((ted[0x12] & 3) << 8);
-    const f2v = ted[0x0f] | ((ted[0x10] & 3) << 8);
-    const fr = (v) => {
+    const f1v = r[0x0e] | ((r[0x12] & 3) << 8);
+    const f2v = r[0x0f] | ((r[0x10] & 3) << 8);
+    const freq = (v) => {
       const div = 1024 - v;
-      if (div <= 1) return 0;
-      return Math.min(15000, 111861 / div / 8 * 4); // angenaehert
+      if (div <= 2) return 0;
+      const f = 111861 / div;
+      return f > 14000 ? 0 : f;
     };
-    const f1 = fr(f1v), f2 = fr(f2v);
-    const ramp = 0.01;
-    if (f1 > 20) this.osc1.frequency.setTargetAtTime(f1, t, ramp);
-    if (f2 > 20) this.osc2.frequency.setTargetAtTime(f2, t, ramp);
-    this.gain1.gain.setTargetAtTime(v1on ? vol : 0, t, ramp);
-    this.gain2.gain.setTargetAtTime((v2on && !v2noise) ? vol : 0, t, ramp);
-    this.gainN.gain.setTargetAtTime((v2on && v2noise) ? vol * 0.7 : 0, t, ramp);
+    const f1 = freq(f1v), f2 = freq(f2v);
+    if (f1 > 20) this.osc1.frequency.setValueAtTime(f1, t);
+    if (f2 > 20) this.osc2.frequency.setValueAtTime(f2, t);
+    this.gain1.gain.setValueAtTime(v1on && f1 > 20 ? vol : 0, t);
+    this.gain2.gain.setValueAtTime(v2on && !v2noise && f2 > 20 ? vol : 0, t);
+    this.gainN.gain.setValueAtTime(v2noise && (ctl & 0x30) ? vol * 0.6 : 0, t);
+    if (f2 > 20) this.noise.playbackRate.setValueAtTime(Math.min(4, Math.max(0.25, f2 / 1000)), t);
   }
 }
 

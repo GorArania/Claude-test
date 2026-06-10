@@ -67,12 +67,34 @@
   const ctx = canvas.getContext('2d');
   const imageData = ctx.createImageData(video.W, video.H);
 
-  // Eingabe: wir setzen die Kernal-Variablen direkt.
-  //   $C6   = Matrix-Code der gedrueckten Taste ($40 = keine)
+  // Eingabe: wir bedienen die Kernal-Variablen direkt.
+  //   $C6   = Matrix-Code der gedrueckten Taste ($40 = keine) - per Lese-Hook
   //   $0543 = Shift-Flag (Start/Aktion)
   const DIR = { up: 0x08, down: 0x09, right: 0x0b, left: 0x0a, none: 0x40 };
   const pressed = new Set();
   let shiftDown = false;
+
+  // Tastendruck-Latch: das Spiel pollt die Tastatur nur ca. alle 250 ms.
+  // Ein Tipp bleibt deshalb gespeichert, bis das Spiel ihn GELESEN hat
+  // (2 Lesezugriffe = ein kompletter Abfrage-Durchlauf des Spiels).
+  let tapDir = null, tapReads = 0, tapExpires = 0;
+
+  function heldDir() {
+    let d = null;
+    for (const x of pressed) d = x; // zuletzt gedrueckte gewinnt
+    return d;
+  }
+  c16.keyReadHook = () => {
+    if (tapDir && performance.now() > tapExpires) tapDir = null; // verfallen
+    if (tapDir) {
+      const code = DIR[tapDir];
+      tapReads++;
+      if (tapReads >= 2 && !pressed.has(tapDir)) tapDir = null; // zugestellt
+      return code;
+    }
+    const d = heldDir();
+    return d ? DIR[d] : DIR.none;
+  };
 
   function keyFor(ev) {
     switch (ev.code) {
@@ -83,14 +105,9 @@
       default: return null;
     }
   }
-  // Kurze Tastendruecke verlaengern: die Titelschleife prueft das Flag nur
-  // alle paar hundert ms - ein kurzer Tipp wuerde sonst oft verpasst.
+  // Shift-Latch: die Titelschleife prueft das Flag nur alle paar hundert ms.
   let shiftLatchUntil = 0;
   function applyInput() {
-    // letzte noch gedrueckte Richtung gewinnt
-    let code = DIR.none;
-    for (const d of pressed) code = DIR[d];
-    c16.ram[0xc6] = code;
     const shiftActive = shiftDown || performance.now() < shiftLatchUntil;
     c16.ram[0x0543] = shiftActive ? 1 : 0;
   }
@@ -104,17 +121,24 @@
   window.addEventListener('keydown', (ev) => {
     safeSoundInit();
     const d = keyFor(ev);
-    if (d) { pressed.add(d); ev.preventDefault(); }
+    if (d) {
+      if (!ev.repeat) { tapDir = d; tapReads = 0; tapExpires = performance.now() + 1200; }
+      pressed.add(d);
+      ev.preventDefault();
+    }
     if (ev.key === 'Shift' || ev.code === 'Space' || ev.code === 'Enter') {
       pressShift(); ev.preventDefault();
     }
   });
   window.addEventListener('keyup', (ev) => {
     const d = keyFor(ev);
-    if (d) pressed.delete(d);
+    if (d) {
+      pressed.delete(d);
+      if (tapDir === d && tapReads >= 2) tapDir = null;
+    }
     if (ev.key === 'Shift' || ev.code === 'Space' || ev.code === 'Enter') shiftDown = false;
   });
-  window.addEventListener('blur', () => { pressed.clear(); shiftDown = false; });
+  window.addEventListener('blur', () => { pressed.clear(); shiftDown = false; tapDir = null; });
   // Klick/Touch auf den Bildschirm = Start (hilft auch bei Fokus-Problemen)
   canvas.addEventListener('pointerdown', () => { safeSoundInit(); pressShift(); });
   canvas.addEventListener('pointerup', () => { shiftDown = false; });
@@ -129,11 +153,12 @@
     last = now;
     if (dt > 100) dt = 100; // Tab war im Hintergrund
     applyInput(); // jeden Frame neu setzen, wie der Kernal-IRQ auf echter Hardware
+    c16.frameStartClock = c16.cpu.clock;
     c16.run(Math.floor(dt * CYCLES_PER_MS));
     if (++blinkCounter >= 16) { blinkCounter = 0; c16.blinkPhase = !c16.blinkPhase; }
     imageData.data.set(video.render());
     ctx.putImageData(imageData, 0, 0);
-    sound.update(c16.ted);
+    sound.update(c16);
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
