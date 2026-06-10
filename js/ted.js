@@ -194,7 +194,8 @@ class TEDSound {
     if (f2 > 20) this.osc2.frequency.setValueAtTime(f2, t);
     this.gain1.gain.setValueAtTime(v1on && f1 > 20 ? vol : 0, t);
     this.gain2.gain.setValueAtTime(v2on && !v2noise && f2 > 20 ? vol : 0, t);
-    this.gainN.gain.setValueAtTime(v2noise && (ctl & 0x30) ? vol * 0.6 : 0, t);
+    // Rauschen: Bit 6 allein genuegt (ersetzt den Tonausgang von Kanal 2)
+    this.gainN.gain.setValueAtTime(v2noise ? vol * 0.6 : 0, t);
     if (f2 > 20) this.noise.playbackRate.setValueAtTime(Math.min(4, Math.max(0.25, f2 / 1000)), t);
   }
 }
