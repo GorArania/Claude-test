@@ -38,12 +38,22 @@
     background: #2c2044; font-size: 12px; color: #e8d8ff;
   }
   #sound-note { font-size: 11px; color: #786898; margin-top: 6px; }
+  #frame { position: relative; }
+  #boot-overlay {
+    position: absolute; inset: 14px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; cursor: pointer; user-select: none;
+    background: #000c; color: #e8d8ff;
+    font-size: 20px; letter-spacing: 2px; text-align: center;
+  }
+  #boot-overlay .play { font-size: 46px; color: #f0a0d0; text-shadow: 0 0 16px #b050a0; }
+  #boot-overlay .small { font-size: 12px; color: #9080b0; }
 </style>
 </head>
 <body>
 <h1>RETURN OF ROCKMAN</h1>
 <div class="sub">Commodore 16 &middot; Mastertronic 1986 &middot; emuliert im Browser</div>
-<div id="frame"><canvas id="screen" width="384" height="288"></canvas></div>
+<div id="frame"><canvas id="screen" width="384" height="288"></canvas><div id="boot-overlay"><div class="play">&#9654;</div><div>KLICKEN ZUM EINSCHALTEN</div><div class="small">startet den C16 mit Titelmusik</div></div></div>
 <div id="hints">
   <span class="key">Shift</span>, <span class="key">Leertaste</span> oder <b>Klick aufs Bild</b> = Start / Aktion &nbsp;&nbsp;
   <span class="key">&#8592;</span><span class="key">&#8593;</span><span class="key">&#8595;</span><span class="key">&#8594;</span> oder
@@ -119,6 +129,7 @@
     shiftLatchUntil = performance.now() + 600;
   }
   window.addEventListener('keydown', (ev) => {
+    if (!booted) return; // erster Tastendruck bootet nur (siehe unten)
     safeSoundInit();
     const d = keyFor(ev);
     if (d) {
@@ -140,7 +151,7 @@
   });
   window.addEventListener('blur', () => { pressed.clear(); shiftDown = false; tapDir = null; });
   // Klick/Touch auf den Bildschirm = Start (hilft auch bei Fokus-Problemen)
-  canvas.addEventListener('pointerdown', () => { safeSoundInit(); pressShift(); });
+  canvas.addEventListener('pointerdown', () => { if (!booted) return; safeSoundInit(); pressShift(); });
   canvas.addEventListener('pointerup', () => { shiftDown = false; });
 
   // PAL-Takt: ~886.7 kHz effektiv, zeitbasiert emuliert
@@ -161,7 +172,21 @@
     sound.update(c16);
     requestAnimationFrame(tick);
   }
-  requestAnimationFrame(tick);
+
+  // Der C16 bootet erst nach dem ersten Klick - dann ist der Ton schon
+  // freigeschaltet (Autoplay-Richtlinie) und die Titelmusik laeuft von Anfang an.
+  const overlay = document.getElementById('boot-overlay');
+  let booted = false;
+  function boot() {
+    if (booted) return;
+    booted = true;
+    safeSoundInit();
+    overlay.remove();
+    last = performance.now();
+    requestAnimationFrame(tick);
+  }
+  overlay.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); boot(); });
+  window.addEventListener('keydown', () => boot(), { once: true });
 })();
 </script>
 </body>
