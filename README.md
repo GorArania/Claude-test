@@ -13,6 +13,9 @@ Einfach `index.html` im Browser öffnen (oder über GitHub Pages aufrufen).
 | **Shift** / **Leertaste** / **Enter** | Spiel starten, Aktion |
 | **Pfeiltasten** oder **W A S D** | Boris steuern |
 
+Auf Geräten mit Touchscreen (Handy/Tablet) erscheint automatisch eine
+Touch-Steuerung unter dem Bildschirm: Steuerkreuz links, START/FIRE rechts.
+
 Führe Boris durch die Höhlen-Labyrinthe, sammle die funkelnden Diamanten
 und finde den blinkenden Ausgang – aber Vorsicht vor den Löchern!
 

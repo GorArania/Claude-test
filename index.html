@@ -24,7 +24,7 @@
     background: #3a2a52; box-shadow: 0 8px 40px #000c, inset 0 0 0 2px #574180;
   }
   canvas {
-    display: block; width: 768px; height: 576px; max-width: 92vw;
+    display: block; width: min(768px, 92vw); height: auto; aspect-ratio: 4 / 3;
     image-rendering: pixelated; image-rendering: crisp-edges;
     background: #000;
   }
@@ -48,12 +48,59 @@
   }
   #boot-overlay .play { font-size: 46px; color: #f0a0d0; text-shadow: 0 0 16px #b050a0; }
   #boot-overlay .small { font-size: 12px; color: #9080b0; }
+  /* Touch-Steuerung (erscheint nur auf Geraeten mit Touchscreen) */
+  #touch-controls {
+    display: none;
+    width: min(768px, 96vw);
+    margin-top: 14px;
+    justify-content: space-between; align-items: center;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  #touch-controls.sichtbar { display: flex; }
+  #dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 64px);
+    grid-template-rows: repeat(3, 64px);
+    gap: 4px;
+  }
+  .tbtn {
+    touch-action: none;
+    border: 2px solid #8068b0; border-radius: 12px;
+    background: #2c2044; color: #e8d8ff;
+    font-size: 26px; font-family: inherit;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .tbtn:active, .tbtn.aktiv { background: #574180; border-color: #b8a0e8; }
+  #dpad .up    { grid-column: 2; grid-row: 1; }
+  #dpad .left  { grid-column: 1; grid-row: 2; }
+  #dpad .right { grid-column: 3; grid-row: 2; }
+  #dpad .down  { grid-column: 2; grid-row: 3; }
+  #btn-action {
+    width: 110px; height: 110px; border-radius: 50%;
+    font-size: 16px; letter-spacing: 1px;
+    border-width: 3px;
+  }
+  @media (pointer: coarse) {
+    #hints { display: none; }
+    h1 { font-size: 17px; margin-top: 10px; }
+    #frame { padding: 8px; }
+    #boot-overlay { inset: 8px; font-size: 16px; }
+  }
 </style>
 </head>
 <body>
 <h1>RETURN OF ROCKMAN</h1>
 <div class="sub">Commodore 16 &middot; Mastertronic 1986 &middot; emuliert im Browser</div>
 <div id="frame"><canvas id="screen" width="384" height="288"></canvas><div id="boot-overlay"><div class="play">&#9654;</div><div>KLICKEN ZUM EINSCHALTEN</div><div class="small">startet den C16 mit Titelmusik</div></div></div>
+<div id="touch-controls">
+  <div id="dpad">
+    <button class="tbtn up" data-dir="up">&#9650;</button>
+    <button class="tbtn left" data-dir="left">&#9664;</button>
+    <button class="tbtn right" data-dir="right">&#9654;</button>
+    <button class="tbtn down" data-dir="down">&#9660;</button>
+  </div>
+  <button class="tbtn" id="btn-action">START<br>FIRE</button>
+</div>
 <div id="hints">
   <span class="key">Shift</span>, <span class="key">Leertaste</span> oder <b>Klick aufs Bild</b> = Start / Aktion &nbsp;&nbsp;
   <span class="key">&#8592;</span><span class="key">&#8593;</span><span class="key">&#8595;</span><span class="key">&#8594;</span> oder
@@ -131,13 +178,21 @@
     shiftDown = true;
     shiftLatchUntil = performance.now() + 600;
   }
+  // gemeinsame Eingabelogik fuer Tastatur und Touch
+  function pressDir(d) {
+    tapDir = d; tapReads = 0; tapExpires = performance.now() + 1200;
+    pressed.add(d);
+  }
+  function releaseDir(d) {
+    pressed.delete(d);
+    if (tapDir === d && tapReads >= 2) tapDir = null;
+  }
   window.addEventListener('keydown', (ev) => {
     if (!booted) return; // erster Tastendruck bootet nur (siehe unten)
     safeSoundInit();
     const d = keyFor(ev);
     if (d) {
-      if (!ev.repeat) { tapDir = d; tapReads = 0; tapExpires = performance.now() + 1200; }
-      pressed.add(d);
+      if (!ev.repeat) pressDir(d); else pressed.add(d);
       ev.preventDefault();
     }
     if (ev.key === 'Shift' || ev.code === 'Space' || ev.code === 'Enter') {
@@ -157,16 +212,50 @@
   });
   window.addEventListener('keyup', (ev) => {
     const d = keyFor(ev);
-    if (d) {
-      pressed.delete(d);
-      if (tapDir === d && tapReads >= 2) tapDir = null;
-    }
+    if (d) releaseDir(d);
     if (ev.key === 'Shift' || ev.code === 'Space' || ev.code === 'Enter') shiftDown = false;
   });
   window.addEventListener('blur', () => { pressed.clear(); shiftDown = false; tapDir = null; });
   // Klick/Touch auf den Bildschirm = Start (hilft auch bei Fokus-Problemen)
   canvas.addEventListener('pointerdown', () => { if (!booted) return; safeSoundInit(); pressShift(); });
   canvas.addEventListener('pointerup', () => { shiftDown = false; });
+
+  // Touch-Steuerung: auf Touch-Geraeten automatisch einblenden
+  const touchControls = document.getElementById('touch-controls');
+  const istTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+  if (istTouch) touchControls.classList.add('sichtbar');
+  for (const btn of touchControls.querySelectorAll('[data-dir]')) {
+    const d = btn.dataset.dir;
+    const down = (ev) => {
+      ev.preventDefault();
+      if (!booted) { boot(); return; }
+      safeSoundInit();
+      btn.classList.add('aktiv');
+      pressDir(d);
+    };
+    const up = (ev) => {
+      ev.preventDefault();
+      btn.classList.remove('aktiv');
+      releaseDir(d);
+    };
+    btn.addEventListener('pointerdown', down);
+    btn.addEventListener('pointerup', up);
+    btn.addEventListener('pointercancel', up);
+    btn.addEventListener('pointerleave', up);
+    btn.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  }
+  const btnAction = document.getElementById('btn-action');
+  btnAction.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    if (!booted) { boot(); return; }
+    safeSoundInit();
+    btnAction.classList.add('aktiv');
+    pressShift();
+  });
+  const actionUp = (ev) => { btnAction.classList.remove('aktiv'); shiftDown = false; };
+  btnAction.addEventListener('pointerup', actionUp);
+  btnAction.addEventListener('pointercancel', actionUp);
+  btnAction.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
   // PAL-Takt: ~886.7 kHz effektiv, zeitbasiert emuliert
   const CYCLES_PER_MS = 887;
