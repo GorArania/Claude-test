@@ -1,0 +1,31 @@
+; Return of Rockman - Level J
+; Diamanten-Soll: 99
+; Symbole: ' '=Leer O=Fels *=Diamant #=Wand X=Ausgang
+;          M=Loch/Monster B=Bow %=Masse :=Erde-fest .=Erde
+; Boris startet immer bei Zeile 1, Spalte 1 (direkt unter der Ecke).
+; Karte: 40 Spalten x 25 Zeilen. Aussenrand sollte Wand (#) sein.
+########################################
+##OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO.#
+#......................................#
+#.OOOOO.O...O.OOOOO..OOOOO.O...O.OOO...#
+#...O...O...O.O......O.....OO..O.O..O..#
+#...O...OOOOO.OOO....OOO...O.O.O.O...O.#
+#...O...O...O.O......O.....O..OO.O..O..#
+#...O...O...O.OOOOO..OOOOO.O...O.OOO...#
+#......................................#
+#.OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO.#
+#......................................#
+#                                      #
+# MMMMMM                               #
+# MMMMMM                               #
+# MMMMMM                               #
+# MMMMMM          %%                   #
+# MMMMMM          %%          BBBBBBBB #
+#       *         %%          BBBBBBBB #
+#  *                          BBBBBBBB #
+#                             BBBBBBBB #
+# *   *   *                   BBBBBBBB #
+#    *                        BBBBBBBB #
+#  *     *                    BBBBBBBB #
+#                                      #
+########################################
