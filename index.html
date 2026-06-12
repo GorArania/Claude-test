@@ -167,7 +167,12 @@
   }
   // Shift-Latch: die Titelschleife prueft das Flag nur alle paar hundert ms.
   let shiftLatchUntil = 0;
+  let levelJumpUntil = 0; // Cheat: solange aktiv, liegt "Neustart" ($0543=2) an
   function applyInput() {
+    if (performance.now() < levelJumpUntil) {
+      c16.ram[0x0543] = 2; // Spiel interpretiert das als Level-Neustart
+      return;
+    }
     const shiftActive = shiftDown || performance.now() < shiftLatchUntil;
     c16.ram[0x0543] = shiftActive ? 1 : 0;
   }
@@ -198,14 +203,19 @@
     if (ev.key === 'Shift' || ev.code === 'Space' || ev.code === 'Enter') {
       pressShift(); ev.preventDefault();
     }
-    // Geheimcode: das Wort LEVEL tippen -> Level ueberspringen.
-    // Setzt das "Ausgang erreicht"-Flag $0357, das Spiel macht den Rest
-    // selbst (Bonus-Countdown, naechstes Level). Wirkt nur im laufenden
-    // Spiel (Tastatur wurde gerade gepollt), nicht im Titel/Intro.
+    // Geheimcode: LEVEL + Buchstabe tippen (LEVELA, LEVELB, ... LEVELP)
+    // springt direkt in das angegebene Level. Nutzt den spieleigenen
+    // Neustart-Pfad: Ziel-Level nach $033C, dann Neustart-Flag ($0543=2);
+    // das abgezogene Leben wird vorher ausgeglichen. Wirkt nur im
+    // laufenden Spiel (eigener Zeichensatz aktiv).
     if (/^Key[A-Z]$/.test(ev.code)) {
-      cheatBuf = (cheatBuf + ev.code[3]).slice(-5);
-      if (cheatBuf === 'LEVEL' && performance.now() - lastKeyPoll < 1500) {
-        c16.ram[0x0357] = 0xff;
+      cheatBuf = (cheatBuf + ev.code[3]).slice(-6);
+      const m = /^LEVEL([A-P])$/.exec(cheatBuf);
+      if (m && c16.ted[0x13] === 0x38) {
+        const ziel = m[1].charCodeAt(0) - 65; // A=0 ... P=15
+        c16.ram[0x0353] = (c16.ram[0x0353] + 1) & 0xff; // Leben-Ausgleich
+        c16.ram[0x033c] = ziel;
+        levelJumpUntil = performance.now() + 1500;
         cheatBuf = '';
       }
     }
